@@ -16,13 +16,12 @@ login_manager.login_view = 'login'
 # Create database tables and a default user for testing
 with app.app_context():
     db.create_all()
-    user = User(username='admin', password='admin')
+    user = User(username='admin', password='admin', role='master')
     if not User.query.filter_by(username='admin').first():
         db.session.add(user)
         db.session.commit()
         db.session.close()
 
-# User loader callback for Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -63,13 +62,16 @@ def get_user(user_id):
 @app.route('/users/all', methods=['GET'])
 @login_required
 def get_users():
+    if current_user.role == 'user':
+        return jsonify({"message": "Admin access required."}), 403
     users = User.query.all()
     list_users = []
     if users:
         for user in users:
             list_users.append({
                 "id": user.id,
-                "username": user.username
+                "username": user.username,
+                "role": user.role
             })
         return jsonify(list_users), 200
     return jsonify({"message": "No users found."}), 404
@@ -77,14 +79,16 @@ def get_users():
 @app.route('/create_user', methods=['POST'])
 @login_required
 def create_user():
+    if current_user.role == 'user':
+        return jsonify({"message": "Admin access required."}), 403
     data = request.json
     username = data.get('username')
     password = data.get('password')
+    role = data.get('role') if current_user.role == 'master' else 'user'
     if username and password:
         if User.query.filter_by(username=username).first():
             return jsonify({"message": "Username already exists."}), 400
-
-        new_user = User(username=username, password=password)
+        new_user = User(username=username, password=password, role=role)
         db.session.add(new_user)
         db.session.commit()
         return jsonify({"message": "User created successfully"}), 201
@@ -96,6 +100,9 @@ def update_user(user_id):
     data = request.json
     username = data.get('username')
     password = data.get('password')
+    role = data.get('role')
+    if current_user.role != 'admin' and current_user.id != user_id:
+        return jsonify({"message": "You can only update your own profile."}), 403
     if username and current_user.username != username and current_user.id == user_id:
         return jsonify({"message": "You cannot change your username while you are logged in."}), 400
     user = User.query.get(user_id)
@@ -104,6 +111,11 @@ def update_user(user_id):
             user.username = username
         if password:
             user.password = password
+        if role and current_user.role == 'master':
+            user.role = role
+        else:
+            if role:
+                return jsonify({"message": "Only master admins can change roles."}), 403
         db.session.commit()
         return jsonify({"message": f"User 'id {user.id}' updated successfully"}), 200
     return jsonify({"message": "User not found."}), 404
@@ -111,9 +123,13 @@ def update_user(user_id):
 @app.route('/delete_user/<int:user_id>', methods=['DELETE'])
 @login_required
 def delete_user(user_id):
+    if current_user.role == 'user':
+        return jsonify({"message": "Admin access required."}), 403
     if current_user.id == user_id:
         return jsonify({"message": "You cannot delete your own account while logged in."}), 400
     user = User.query.get(user_id)
+    if current_user.role != 'master' and user and user.role == 'admin' or user.role == 'master':
+        return jsonify({"message": "Only master admins can delete other admins."}), 403
     if user:
         db.session.delete(user)
         db.session.commit()
