@@ -2,6 +2,7 @@ from flask import Flask, jsonify, request
 from models.user import User
 from models.database import db
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
+import bcrypt
 
 
 app = Flask(__name__)
@@ -16,7 +17,8 @@ login_manager.login_view = 'login'
 # Create database tables and a default user for testing
 with app.app_context():
     db.create_all()
-    user = User(username='admin', password='admin', role='master')
+    password = bcrypt.hashpw(b'admin', bcrypt.gensalt())
+    user = User(username='admin', password=password, role='master')
     if not User.query.filter_by(username='admin').first():
         db.session.add(user)
         db.session.commit()
@@ -33,10 +35,9 @@ def login():
     password = data.get('password')
     if current_user.is_authenticated:
         return jsonify({"message": "User already logged in"}), 200
-
     if username and password:
-        user = User.query.filter_by(username=username, password=password).first()
-        if user:
+        user = User.query.filter_by(username=username).first()
+        if user and bcrypt.checkpw(str.encode(password), user.password):
             login_user(user)
             return jsonify({"message": "Login successful"}), 200
 
@@ -84,6 +85,7 @@ def create_user():
     data = request.json
     username = data.get('username')
     password = data.get('password')
+    password = bcrypt.hashpw(str.encode(password), bcrypt.gensalt()) if password else None
     role = data.get('role') if current_user.role == 'master' else 'user'
     if username and password:
         if User.query.filter_by(username=username).first():
@@ -100,8 +102,9 @@ def update_user(user_id):
     data = request.json
     username = data.get('username')
     password = data.get('password')
+    password = bcrypt.hashpw(str.encode(password), bcrypt.gensalt()) if password else None
     role = data.get('role')
-    if current_user.role != 'admin' and current_user.id != user_id:
+    if current_user.role == 'user' and current_user.id != user_id:
         return jsonify({"message": "You can only update your own profile."}), 403
     if username and current_user.username != username and current_user.id == user_id:
         return jsonify({"message": "You cannot change your username while you are logged in."}), 400
