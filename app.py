@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request
 from models.user import User
 from models.database import db
-from flask_login import LoginManager, login_user, logout_user, login_required
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 
 
 app = Flask(__name__)
@@ -13,6 +13,9 @@ db.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+with app.app_context():
+    db.create_all()
+
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -22,6 +25,8 @@ def login():
     data = request.json
     username = data.get('username')
     password = data.get('password')
+    if current_user.is_authenticated:
+        return jsonify({"message": "User already logged in"}), 200
 
     if username and password:
         user = User.query.filter_by(username=username, password=password).first()
@@ -108,4 +113,6 @@ def delete_user(user_id):
 
 if __name__ == '__main__':
     app.run(debug=True)
+
+
 
