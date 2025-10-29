@@ -111,6 +111,8 @@ def update_user(user_id):
 @app.route('/delete_user/<int:user_id>', methods=['DELETE'])
 @login_required
 def delete_user(user_id):
+    if current_user.id == user_id:
+        return jsonify({"message": "You cannot delete your own account while logged in."}), 400
     user = User.query.get(user_id)
     if user:
         db.session.delete(user)
