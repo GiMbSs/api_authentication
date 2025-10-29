@@ -5,7 +5,7 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'pLOkIjU@@7'
+app.config['SECRET_KEY'] = 'QAwsED1@__@(2345'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///api.db'
 
 login_manager = LoginManager()
@@ -13,9 +13,16 @@ db.init_app(app)
 login_manager.init_app(app)
 login_manager.login_view = 'login'
 
+# Create database tables and a default user for testing
 with app.app_context():
     db.create_all()
+    user = User(username='admin', password='admin')
+    if not User.query.filter_by(username='admin').first():
+        db.session.add(user)
+        db.session.commit()
+        db.session.close()
 
+# User loader callback for Flask-Login
 @login_manager.user_loader
 def load_user(user_id):
     return User.query.get(int(user_id))
@@ -67,8 +74,6 @@ def get_users():
         return jsonify(list_users), 200
     return jsonify({"message": "No users found."}), 404
 
-
-
 @app.route('/create_user', methods=['POST'])
 @login_required
 def create_user():
@@ -91,6 +96,8 @@ def update_user(user_id):
     data = request.json
     username = data.get('username')
     password = data.get('password')
+    if username and current_user.username != username and current_user.id == user_id:
+        return jsonify({"message": "You cannot change your username while you are logged in."}), 400
     user = User.query.get(user_id)
     if user:
         if username:
